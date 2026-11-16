@@ -613,4 +613,707 @@
       font-family: 'Orbitron', sans-serif;
       font-weight: 900;
       font-size: 0.78rem;
-      padding: 0.75
+      padding: 0.75rem 1.3rem;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .btn-json {
+      background: transparent;
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.88rem;
+      padding: 0.7rem 1.2rem;
+      cursor: pointer;
+    }
+
+    .btn-json:hover { background: rgba(0, 243, 255, 0.15); }
+
+    pre.raw-json {
+      margin-top: 1rem;
+      background: #030308;
+      border: 1px solid var(--neon-pink);
+      color: var(--neon-green);
+      padding: 1rem;
+      font-size: 0.78rem;
+      max-height: 300px;
+      overflow: auto;
+      display: none;
+    }
+
+    .empty-msg {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--neon-pink);
+      font-size: 1.1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-top">
+      <div class="logo-box">
+        <div class="cyber-tag">TURBO-DB</div>
+        <div>
+          <h1>SUPER VELOZ</h1>
+          <div class="logo-sub">STAR CITIZEN WIKI API // CYBERNETIC TERMINAL</div>
+        </div>
+      </div>
+
+      <div class="hud-telemetry">
+        <div><span>ROTA:</span> <strong id="stat-route">/v2/vehicles</strong></div>
+        <div><span>CARREGADOS:</span> <strong id="stat-loaded">0</strong></div>
+        <div><span>TOTAL API:</span> <strong id="stat-total">0</strong></div>
+        <div><span>EXIBINDO:</span> <strong id="stat-shown">0</strong></div>
+      </div>
+    </div>
+
+    <nav class="nav-bar" id="nav-bar">
+      <span class="nav-group-label">FROTA:</span>
+      <button class="tab-btn active" data-route="v2/vehicles">Vehicles (Naves)</button>
+      <button class="tab-btn" data-route="v2/manufacturers">Manufacturers</button>
+
+      <span class="nav-group-label" style="margin-left:0.5rem;">GEAR & ITENS:</span>
+      <button class="tab-btn" data-route="v2/weapons">Weapons</button>
+      <button class="tab-btn" data-route="v2/armor">Armor</button>
+      <button class="tab-btn" data-route="v2/clothing">Clothing</button>
+      <button class="tab-btn" data-route="v2/items">Items (All)</button>
+
+      <span class="nav-group-label" style="margin-left:0.5rem;">UNIVERSO & LORE:</span>
+      <button class="tab-btn" data-route="v2/systems">Star Systems</button>
+      <button class="tab-btn" data-route="v2/celestial-objects">Planets & Moons</button>
+      <button class="tab-btn" data-route="v2/commodities">Commodities</button>
+      <button class="tab-btn" data-route="v2/galactapedia">Galactapedia</button>
+      <button class="tab-btn" data-route="v2/comm-links">Comm-Links</button>
+    </nav>
+  </header>
+
+  <div id="status-bar">
+    <span id="status-text">[SYS] AGUARDANDO CONEXÃO COM A REDE...</span>
+    <div class="progress-rail">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <button type="button" class="btn-load-all" id="btn-force-all" style="display:none;">CARREGAR 100% DA ROTA</button>
+  </div>
+
+  <section class="controls">
+    <input type="text" id="search-input" placeholder=">> BUSCAR POR NOME, FABRICANTE, CÓDIGO OU DESCRIÇÃO..." />
+    <select id="filter-primary">
+      <option value="">[FILTRO 1: TODOS]</option>
+    </select>
+    <select id="filter-secondary">
+      <option value="">[FILTRO 2: TODOS]</option>
+    </select>
+    <div class="custom-route-wrap">
+      <input type="text" id="custom-route-input" placeholder="Rota custom (ex: v2/shields)" title="Digite qualquer endpoint da Star Citizen Wiki API" />
+      <button type="button" class="btn-exec" id="btn-exec-route">IR</button>
+    </div>
+    <button class="btn-purge" id="btn-reset">LIMPAR</button>
+  </section>
+
+  <main class="grid" id="data-grid"></main>
+
+  <div class="pagination-bar" id="pagination-bar" style="display:none;">
+    <button class="btn-page" id="btn-prev-page">&lt; PÁGINA ANTERIOR</button>
+    <span id="page-indicator" style="color:var(--neon-yellow);">PÁGINA 1 DE 1</span>
+    <button class="btn-page" id="btn-next-page">PRÓXIMA PÁGINA &gt;</button>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-terminal" role="dialog" aria-modal="true">
+      <div class="modal-top">
+        <div>
+          <span id="modal-sub" style="font-size:0.75rem;color:var(--neon-cyan);display:block;"></span>
+          <h2 id="modal-title">DADOS DO SISTEMA</h2>
+        </div>
+        <button class="btn-close" id="modal-close">X</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    const BASE_API = 'https://api.star-citizen.wiki/api';
+    const FLEETYARDS_FALLBACK = 'https://api.fleetyards.net/v1/models';
+
+    let activeRoute = 'v2/vehicles';
+    let loadSessionId = 0;
+    let currentItems = [];
+    let currentPage = 1;
+    let lastPage = 1;
+    let totalRecords = 0;
+
+    // Endpoints que possuem milhares de registros: carregam rápido por página, mas permitem botão "CARREGAR 100%"
+    const VERY_LARGE_ENDPOINTS = new Set(['v2/items', 'v3/items', 'v2/comm-links', 'v2/clothing']);
+
+    const fullRouteCache = new Map();
+    const pageRouteCache = new Map();
+    const detailCache = new Map();
+
+    const gridEl = document.getElementById('data-grid');
+    const searchInput = document.getElementById('search-input');
+    const filter1 = document.getElementById('filter-primary');
+    const filter2 = document.getElementById('filter-secondary');
+    const customRouteInput = document.getElementById('custom-route-input');
+    const btnExecRoute = document.getElementById('btn-exec-route');
+    const btnForceAll = document.getElementById('btn-force-all');
+    const resetBtn = document.getElementById('btn-reset');
+    const statRoute = document.getElementById('stat-route');
+    const statLoaded = document.getElementById('stat-loaded');
+    const statTotal = document.getElementById('stat-total');
+    const statShown = document.getElementById('stat-shown');
+    const statusText = document.getElementById('status-text');
+    const progressBar = document.getElementById('progress-bar');
+    const paginationBar = document.getElementById('pagination-bar');
+    const btnPrevPage = document.getElementById('btn-prev-page');
+    const btnNextPage = document.getElementById('btn-next-page');
+    const pageIndicator = document.getElementById('page-indicator');
+    const modalOverlay = document.getElementById('modal-overlay');
+
+    function getText(val, fallback = 'N/D') {
+      if (val === null || val === undefined) return fallback;
+      if (typeof val === 'string') return val.trim() || fallback;
+      if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+      if (Array.isArray(val)) {
+        const joined = val.map(x => getText(x, '')).filter(Boolean).join(' / ');
+        return joined || fallback;
+      }
+      if (typeof val === 'object') {
+        return val.en_EN || val.pt_BR || val.name || val.title || Object.values(val).find(v => typeof v === 'string') || fallback;
+      }
+      return fallback;
+    }
+
+    function esc(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function getHologramSVG(route) {
+      if (route.includes('weapon')) {
+        return `<svg class="holo-svg" viewBox="0 0 200 90" fill="none" stroke="#00f3ff" stroke-width="2">
+          <path d="M20,45 L145,45 L165,38 L185,38 L185,48 L155,52 L130,52 L115,68 L95,68 L105,52 L55,52 L40,70 L22,70 L32,52 L20,52 Z" fill="rgba(0,243,255,0.08)"/>
+          <line x1="65" y1="36" x2="125" y2="36" stroke="#ff0055" stroke-width="2"/>
+          <circle cx="150" cy="43" r="3" fill="#fcee0a"/>
+        </svg>`;
+      }
+      if (route.includes('armor') || route.includes('clothing')) {
+        return `<svg class="holo-svg" viewBox="0 0 200 90" fill="none" stroke="#00f3ff" stroke-width="1.8">
+          <polygon points="100,10 125,22 140,48 128,82 72,82 60,48 75,22" fill="rgba(0,243,255,0.08)"/>
+          <polygon points="100,20 116,28 112,48 88,48 84,28" stroke="#fcee0a"/>
+          <line x1="70" y1="58" x2="130" y2="58" stroke="#ff0055" stroke-dasharray="4 3"/>
+        </svg>`;
+      }
+      if (route.includes('system') || route.includes('celestial') || route.includes('starmap')) {
+        return `<svg class="holo-svg" viewBox="0 0 200 90" fill="none" stroke="#00f3ff" stroke-width="1.5">
+          <circle cx="100" cy="45" r="14" fill="rgba(252,238,10,0.22)" stroke="#fcee0a" stroke-width="2"/>
+          <ellipse cx="100" cy="45" rx="48" ry="15" stroke="#00f3ff"/>
+          <ellipse cx="100" cy="45" rx="80" ry="26" stroke="#ff0055" stroke-dasharray="4 3"/>
+          <circle cx="148" cy="45" r="4" fill="#00ff9d"/>
+        </svg>`;
+      }
+      if (route.includes('galactapedia') || route.includes('comm-link')) {
+        return `<svg class="holo-svg" viewBox="0 0 200 90" fill="none" stroke="#00f3ff" stroke-width="1.8">
+          <rect x="45" y="14" width="110" height="62" fill="rgba(0,243,255,0.07)"/>
+          <line x1="60" y1="28" x2="140" y2="28" stroke="#fcee0a" stroke-width="2"/>
+          <line x1="60" y1="42" x2="130" y2="42" stroke="#00f3ff"/>
+          <line x1="60" y1="54" x2="115" y2="54" stroke="#ff0055"/>
+        </svg>`;
+      }
+      if (route.includes('vehicle')) {
+        return `<svg class="holo-svg" viewBox="0 0 220 90" fill="none" stroke="#00f3ff" stroke-width="1.8">
+          <polygon points="195,45 130,32 75,14 45,34 22,40 22,50 45,56 75,76 130,58" fill="rgba(0,243,255,0.08)"/>
+          <polygon points="155,45 110,38 75,45 110,52" stroke="#fcee0a" stroke-width="1.5"/>
+          <line x1="30" y1="45" x2="185" y2="45" stroke="#ff0055" stroke-dasharray="4 3"/>
+        </svg>`;
+      }
+      return `<svg class="holo-svg" viewBox="0 0 200 90" fill="none" stroke="#00f3ff" stroke-width="1.8">
+        <polygon points="100,12 155,34 155,66 100,84 45,66 45,34" fill="rgba(0,243,255,0.08)"/>
+        <polygon points="100,25 135,40 135,60 100,72 65,60 65,40" stroke="#ff0055"/>
+        <circle cx="100" cy="48" r="8" stroke="#fcee0a"/>
+      </svg>`;
+    }
+
+    // Fallback completo percorre TODAS as páginas do FleetYards até acabar
+    async function fetchFleetYardsBackupComplete(session) {
+      const items = [];
+      let page = 1;
+      while (true) {
+        if (session !== loadSessionId) return [];
+        const res = await fetch(`${FLEETYARDS_FALLBACK}?per_page=100&page=${page}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) break;
+
+        data.forEach(m => {
+          items.push({
+            uuid: m.id,
+            slug: m.slug,
+            name: m.name,
+            manufacturer: { name: m.manufacturer?.name || 'Desconhecido' },
+            production_status: m.productionStatusLabel || m.productionStatus || 'Flight Ready',
+            focus: m.focus || m.classificationLabel || 'Multifunção',
+            cargo_capacity: m.cargo,
+            crew: { min: m.minCrew, max: m.maxCrew },
+            sizes: { length: m.length, beam: m.beam, height: m.height },
+            mass: m.mass,
+            speed: { scm: m.scmSpeed, max: m.afterburnerSpeed },
+            msrp: m.lastPledgePrice || m.pledgePrice,
+            description: m.description,
+            _image: m.storeImageLarge || m.storeImageMedium || m.storeImage || ''
+          });
+        });
+
+        currentItems = [...items];
+        statLoaded.textContent = items.length;
+        statTotal.textContent = items.length;
+        statusText.textContent = `[BACKUP] SINCRONIZANDO FROTA COMPLETA (${items.length} NAVES)...`;
+        buildDynamicFilters(currentItems);
+        renderCards();
+
+        if (data.length < 100) break;
+        page++;
+      }
+      return items;
+    }
+
+    async function loadRoute(route, page = 1, forceLoadAll = false) {
+      const cleanRoute = route.replace(/^\/+|\/+$/g, '');
+      const session = ++loadSessionId;
+      activeRoute = cleanRoute;
+      currentPage = page;
+      statRoute.textContent = `/${cleanRoute}`;
+
+      searchInput.value = '';
+      filter1.value = '';
+      filter2.value = '';
+      paginationBar.style.display = 'none';
+      btnForceAll.style.display = 'none';
+
+      // Se já temos a rota 100% em cache
+      if (fullRouteCache.has(cleanRoute)) {
+        const allCached = fullRouteCache.get(cleanRoute);
+        currentItems = allCached;
+        lastPage = 1;
+        totalRecords = allCached.length;
+        statLoaded.textContent = currentItems.length;
+        statTotal.textContent = totalRecords;
+        progressBar.style.width = '100%';
+        statusText.textContent = `[CACHE 100%] /${cleanRoute.toUpperCase()} — TODOS OS ${totalRecords} REGISTROS CARREGADOS`;
+        buildDynamicFilters(currentItems);
+        renderCards();
+        return;
+      }
+
+      // Se não forçou carga total e já temos esta página específica em cache
+      const pageCacheKey = `${cleanRoute}:p${page}`;
+      if (!forceLoadAll && pageRouteCache.has(pageCacheKey)) {
+        const cached = pageRouteCache.get(pageCacheKey);
+        currentItems = cached.items;
+        lastPage = cached.lastPage;
+        totalRecords = cached.total;
+        statLoaded.textContent = currentItems.length;
+        statTotal.textContent = totalRecords;
+        progressBar.style.width = '100%';
+        statusText.textContent = `[CACHE] /${cleanRoute.toUpperCase()} PÁGINA ${page} (${currentItems.length} DE ${totalRecords})`;
+        if (lastPage > 1) btnForceAll.style.display = 'inline-block';
+        updatePaginationUI();
+        buildDynamicFilters(currentItems);
+        renderCards();
+        return;
+      }
+
+      statusText.textContent = `[NET] CONECTANDO A ${BASE_API}/${cleanRoute}?page=${page}...`;
+      progressBar.style.width = '8%';
+      progressBar.style.background = 'linear-gradient(90deg, var(--neon-pink), var(--neon-cyan))';
+      gridEl.innerHTML = '';
+
+      try {
+        const res = await fetch(`${BASE_API}/${cleanRoute}?limit=100&page=${page}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (session !== loadSessionId) return;
+
+        const json = await res.json();
+        let fetched = Array.isArray(json.data) ? [...json.data] : (json.data ? [json.data] : []);
+        const apiLastPage = json.meta?.last_page || 1;
+        totalRecords = json.meta?.total || fetched.length;
+
+        const shouldFetchAllPages = forceLoadAll || (!VERY_LARGE_ENDPOINTS.has(cleanRoute) && apiLastPage > 1 && page === 1);
+
+        if (shouldFetchAllPages && apiLastPage > 1) {
+          currentItems = [...fetched];
+          statLoaded.textContent = currentItems.length;
+          statTotal.textContent = totalRecords;
+          progressBar.style.width = `${Math.max(5, Math.round((1 / apiLastPage) * 100))}%`;
+          statusText.textContent = `[STREAM] BAIXANDO TODAS AS PÁGINAS DE /${cleanRoute.toUpperCase()} (${currentItems.length} DE ${totalRecords})...`;
+
+          buildDynamicFilters(currentItems);
+          renderCards();
+
+          const remainingPages = [];
+          for (let p = 2; p <= apiLastPage; p++) remainingPages.push(p);
+
+          const batchSize = 5;
+          let completedPages = 1;
+
+          for (let i = 0; i < remainingPages.length; i += batchSize) {
+            if (session !== loadSessionId) return;
+            const batch = remainingPages.slice(i, i + batchSize);
+
+            const batchResults = await Promise.all(
+              batch.map(p =>
+                fetch(`${BASE_API}/${cleanRoute}?limit=100&page=${p}`)
+                  .then(r => r.ok ? r.json() : { data: [] })
+                  .catch(() => ({ data: [] }))
+              )
+            );
+
+            if (session !== loadSessionId) return;
+
+            batchResults.forEach(r => {
+              if (Array.isArray(r.data)) fetched.push(...r.data);
+            });
+
+            completedPages += batch.length;
+            currentItems = [...fetched];
+            statLoaded.textContent = currentItems.length;
+            progressBar.style.width = `${Math.min(100, Math.round((completedPages / apiLastPage) * 100))}%`;
+            statusText.textContent = `[STREAM] BAIXANDO /${cleanRoute.toUpperCase()} (${currentItems.length} DE ${totalRecords} REGISTROS)...`;
+
+            buildDynamicFilters(currentItems);
+            renderCards();
+          }
+
+          lastPage = 1;
+          fullRouteCache.set(cleanRoute, currentItems);
+          btnForceAll.style.display = 'none';
+          progressBar.style.width = '100%';
+          statusText.textContent = `[COMPLETO 100%] /${cleanRoute.toUpperCase()} — TODOS OS ${currentItems.length} REGISTROS CARREGADOS!`;
+          updatePaginationUI();
+          return;
+        }
+
+        // Modo paginado (para rotas muito grandes como /v2/items com milhares de entradas)
+        currentItems = fetched;
+        lastPage = apiLastPage;
+        pageRouteCache.set(pageCacheKey, { items: currentItems, lastPage, total: totalRecords });
+
+        statLoaded.textContent = currentItems.length;
+        statTotal.textContent = totalRecords;
+        progressBar.style.width = '100%';
+        statusText.textContent = `[ONLINE] /${cleanRoute.toUpperCase()} — PÁGINA ${currentPage}/${lastPage} (${currentItems.length} DE ${totalRecords} REGISTROS)`;
+
+        if (lastPage > 1) {
+          btnForceAll.style.display = 'inline-block';
+        }
+
+        updatePaginationUI();
+        buildDynamicFilters(currentItems);
+        renderCards();
+
+      } catch (err) {
+        if (session !== loadSessionId) return;
+        console.warn('API principal falhou, verificando fallback:', err);
+
+        if (cleanRoute.includes('vehicles')) {
+          statusText.textContent = '[FALLBACK] CARREGANDO BANCO DE DADOS COMPLETO DE RESERVA...';
+          try {
+            const backupItems = await fetchFleetYardsBackupComplete(session);
+            if (session !== loadSessionId) return;
+            if (backupItems.length > 0) {
+              currentItems = backupItems;
+              lastPage = 1;
+              totalRecords = backupItems.length;
+              fullRouteCache.set(cleanRoute, currentItems);
+              statLoaded.textContent = totalRecords;
+              statTotal.textContent = totalRecords;
+              progressBar.style.width = '100%';
+              statusText.textContent = `[COMPLETO 100%] ${totalRecords} NAVES CARREGADAS COM SUCESSO`;
+              updatePaginationUI();
+              buildDynamicFilters(currentItems);
+              renderCards();
+              return;
+            }
+          } catch (e2) {
+            console.error(e2);
+          }
+        }
+
+        statusText.textContent = `[ERRO] FALHA AO ACESSAR /${cleanRoute.toUpperCase()} (${err.message})`;
+        progressBar.style.background = '#ff0055';
+        gridEl.innerHTML = `<div class="empty-msg">[!] FALHA DE CONEXÃO COM /${esc(cleanRoute)}. TENTE OUTRA ABA ACIMA OU RECARREGUE A PÁGINA.</div>`;
+      }
+    }
+
+    function updatePaginationUI() {
+      if (lastPage > 1) {
+        paginationBar.style.display = 'flex';
+        pageIndicator.textContent = `PÁGINA ${currentPage} DE ${lastPage} (TOTAL: ${totalRecords})`;
+        btnPrevPage.disabled = currentPage <= 1;
+        btnNextPage.disabled = currentPage >= lastPage;
+      } else {
+        paginationBar.style.display = 'none';
+      }
+    }
+
+    function buildDynamicFilters(items) {
+      const cur1 = filter1.value;
+      const cur2 = filter2.value;
+      const f1Set = new Set();
+      const f2Set = new Set();
+
+      items.forEach(it => {
+        const cat1 = it.manufacturer?.name || getText(it.type, '') || getText(it.category, '');
+        if (cat1 && cat1 !== 'N/D') f1Set.add(cat1);
+
+        const cat2 = getText(it.production_status, '') || getText(it.size, '') || getText(it.affiliation, '') || getText(it.sub_type, '');
+        if (cat2 && cat2 !== 'N/D' && cat2 !== cat1) f2Set.add(cat2);
+      });
+
+      populateSelect(filter1, [...f1Set].sort(), '[CATEGORIA / FABRICANTE: TODOS]', cur1);
+      populateSelect(filter2, [...f2Set].sort(), '[STATUS / CLASSE: TODOS]', cur2);
+    }
+
+    function populateSelect(el, list, defaultText, selectedVal) {
+      el.innerHTML = `<option value="">${defaultText}</option>` +
+        list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+      if (selectedVal && list.includes(selectedVal)) {
+        el.value = selectedVal;
+      }
+    }
+
+    function extractCardMetadata(it) {
+      const title = getText(it.name || it.title || it.code || it.slug, 'REGISTRO SEM NOME');
+      const code = (it.uuid || it.id || it.code || it.slug || 'SYS').toString().slice(0, 10).toUpperCase();
+      const badge = getText(it.production_status || it.type || it.category || it.status, activeRoute.split('/')[1]?.toUpperCase() || 'DATA');
+      const subtitle = it.manufacturer?.name || getText(it.system?.name || it.affiliation || it.sub_type || it.series, activeRoute.toUpperCase());
+      const desc = getText(it.description || it.excerpt || it.body || it.focus || it.known_for, 'Clique para inspecionar telemetria completa e JSON bruto.');
+
+      const metrics = [];
+      if (it.cargo_capacity != null) metrics.push(['CARGA', `${it.cargo_capacity} SCU`]);
+      if (it.crew?.max != null || it.max_crew != null) metrics.push(['TRIPULAÇÃO', it.crew?.max ?? it.max_crew]);
+      if (it.sizes?.length != null || it.length != null) metrics.push(['COMPR.', `${it.sizes?.length ?? it.length}m`]);
+      if (it.size != null && metrics.length < 3) metrics.push(['TAMANHO', getText(it.size)]);
+      if (it.grade != null && metrics.length < 3) metrics.push(['GRADE', getText(it.grade)]);
+      if (it.class != null && metrics.length < 3) metrics.push(['CLASSE', getText(it.class)]);
+      if (it.mass != null && metrics.length < 3) metrics.push(['MASSA', `${Number(it.mass).toLocaleString('pt-BR')}kg`]);
+      if (it.msrp != null && metrics.length < 3) metrics.push(['MSRP', `$${it.msrp}`]);
+      if (it.symbol != null && metrics.length < 3) metrics.push(['SÍMBOLO', it.symbol]);
+      if (it.code != null && metrics.length < 3) metrics.push(['CÓDIGO', it.code]);
+      if (it.published_at != null && metrics.length < 3) metrics.push(['DATA', String(it.published_at).slice(0, 10)]);
+
+      while (metrics.length < 3) {
+        metrics.push(['ROTA', activeRoute.split('/')[1] || 'API']);
+      }
+
+      return { title, code, badge, subtitle, desc, metrics: metrics.slice(0, 3) };
+    }
+
+    function renderCards() {
+      const q = searchInput.value.trim().toLowerCase();
+      const v1 = filter1.value;
+      const v2 = filter2.value;
+
+      const filtered = currentItems.filter(it => {
+        const meta = extractCardMetadata(it);
+        const hay = `${meta.title} ${meta.subtitle} ${meta.desc} ${meta.code}`.toLowerCase();
+        if (q && !hay.includes(q)) return false;
+
+        if (v1) {
+          const cat1 = it.manufacturer?.name || getText(it.type, '') || getText(it.category, '');
+          if (cat1 !== v1) return false;
+        }
+        if (v2) {
+          const cat2 = getText(it.production_status, '') || getText(it.size, '') || getText(it.affiliation, '') || getText(it.sub_type, '');
+          if (cat2 !== v2) return false;
+        }
+        return true;
+      });
+
+      statShown.textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        gridEl.innerHTML = `<div class="empty-msg">[!] NENHUM REGISTRO ENCONTRADO PARA OS FILTROS APLICADOS.</div>`;
+        return;
+      }
+
+      const frag = document.createDocumentFragment();
+
+      filtered.forEach(it => {
+        const meta = extractCardMetadata(it);
+        const card = document.createElement('article');
+        card.className = 'cyber-card';
+
+        const lowBadge = meta.badge.toLowerCase();
+        const badgeCls = lowBadge.includes('flight') || lowBadge.includes('ready') ? 'st-green' :
+                         (lowBadge.includes('concept') ? 'st-yellow' : 'st-pink');
+
+        const visualHtml = it._image
+          ? `<img src="${esc(it._image)}" alt="${esc(meta.title)}" loading="lazy" onerror="this.outerHTML=getHologramSVG(activeRoute)">`
+          : getHologramSVG(activeRoute);
+
+        card.innerHTML = `
+          <div class="holo-viewport">
+            <div class="holo-scan"></div>
+            <span class="holo-code">ID // ${esc(meta.code)}</span>
+            <span class="holo-status ${badgeCls}">${esc(meta.badge)}</span>
+            ${visualHtml}
+          </div>
+          <div class="card-content">
+            <div>
+              <div class="card-mfg">${esc(meta.subtitle)}</div>
+              <h3 class="card-title">${esc(meta.title)}</h3>
+              <div class="card-role">${esc(meta.desc.slice(0, 95))}${meta.desc.length > 95 ? '...' : ''}</div>
+            </div>
+            <div class="card-metrics">
+              ${meta.metrics.map(([k, v]) => `
+                <div class="metric"><small>${esc(k)}</small><strong>${esc(String(v))}</strong></div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => openModal(it));
+        frag.appendChild(card);
+      });
+
+      gridEl.innerHTML = '';
+      gridEl.appendChild(frag);
+    }
+
+    async function openModal(item) {
+      const meta = extractCardMetadata(item);
+      document.getElementById('modal-title').textContent = meta.title;
+
+      const lookupId = item.uuid || item.slug || item.id || item.code;
+      const endpointUrl = lookupId ? `${BASE_API}/${activeRoute}/${encodeURIComponent(lookupId)}` : `${BASE_API}/${activeRoute}`;
+      document.getElementById('modal-sub').textContent = `SUPER VELOZ // ${endpointUrl}`;
+      modalOverlay.classList.add('open');
+
+      const cacheKey = `${activeRoute}:${lookupId || meta.title}`;
+      renderModalBody(item, true);
+
+      if (detailCache.has(cacheKey)) {
+        renderModalBody(detailCache.get(cacheKey), false);
+        return;
+      }
+
+      if (lookupId && !item._image) {
+        try {
+          const res = await fetch(endpointUrl);
+          if (res.ok) {
+            const json = await res.json();
+            const fullData = json.data ? { ...item, ...json.data } : item;
+            detailCache.set(cacheKey, fullData);
+            renderModalBody(fullData, false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Detalhe individual indisponível.');
+        }
+      }
+
+      renderModalBody(item, false);
+    }
+
+    function renderModalBody(data, isLoading) {
+      const desc = getText(data.description || data.body || data.excerpt, 'Sem descrição textual adicional registrada neste nó da API.');
+      const wikiUrl = data.web_url || data.rsi_url || `https://starcitizen.tools/${encodeURIComponent(getText(data.name || data.title, '').replace(/\s+/g, '_'))}`;
+
+      const specs = [];
+      Object.entries(data).forEach(([key, val]) => {
+        if (val === null || val === undefined || key.startsWith('_') || key === 'description' || key === 'body' || key === 'excerpt' || key === 'link' || key === 'web_url') return;
+        if (typeof val !== 'object') {
+          specs.push([key.replace(/_/g, ' '), String(val)]);
+        } else if (!Array.isArray(val)) {
+          Object.entries(val).forEach(([subKey, subVal]) => {
+            if (subVal !== null && subVal !== undefined && typeof subVal !== 'object') {
+              specs.push([`${key}.${subKey}`.replace(/_/g, ' '), String(subVal)]);
+            }
+          });
+        }
+      });
+
+      document.getElementById('modal-body').innerHTML = `
+        ${isLoading ? `<div style="color:var(--neon-yellow);margin-bottom:0.8rem;">[SYNC] COLETANDO TELEMETRIA COMPLETA DA API...</div>` : ''}
+        ${data._image ? `<img class="modal-hero" src="${esc(data._image)}" alt="${esc(getText(data.name))}">` : ''}
+        <p class="modal-desc">${esc(desc)}</p>
+        <div class="modal-specs">
+          ${specs.slice(0, 16).map(([k, v]) => `
+            <div class="spec-box">
+              <span>${esc(k)}</span>
+              <strong>${esc(v)}</strong>
+            </div>
+          `).join('')}
+        </div>
+        <div class="modal-footer-btns">
+          <a class="btn-cyber-link" href="${esc(wikiUrl)}" target="_blank" rel="noopener noreferrer">ABRIR FONTE OFICIAL &nearr;</a>
+          <button type="button" class="btn-json" id="btn-toggle-json">{ } VER JSON COMPLETO DA API</button>
+        </div>
+        <pre class="raw-json" id="raw-json-box">${esc(JSON.stringify(data, null, 2))}</pre>
+      `;
+
+      document.getElementById('btn-toggle-json').addEventListener('click', () => {
+        const pre = document.getElementById('raw-json-box');
+        pre.style.display = pre.style.display === 'block' ? 'none' : 'block';
+      });
+    }
+
+    document.getElementById('nav-bar').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadRoute(btn.getAttribute('data-route'), 1, false);
+    });
+
+    btnForceAll.addEventListener('click', () => {
+      loadRoute(activeRoute, 1, true);
+    });
+
+    btnExecRoute.addEventListener('click', () => {
+      const custom = customRouteInput.value.trim();
+      if (!custom) return;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      loadRoute(custom, 1, false);
+    });
+
+    customRouteInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') btnExecRoute.click();
+    });
+
+    btnPrevPage.addEventListener('click', () => {
+      if (currentPage > 1) loadRoute(activeRoute, currentPage - 1, false);
+    });
+
+    btnNextPage.addEventListener('click', () => {
+      if (currentPage < lastPage) loadRoute(activeRoute, currentPage + 1, false);
+    });
+
+    searchInput.addEventListener('input', renderCards);
+    filter1.addEventListener('change', renderCards);
+    filter2.addEventListener('change', renderCards);
+
+    resetBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      filter1.value = '';
+      filter2.value = '';
+      renderCards();
+    });
+
+    document.getElementById('modal-close').addEventListener('click', () => modalOverlay.classList.remove('open'));
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('open'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modalOverlay.classList.remove('open'); });
+
+    // Inicializa baixando 100% de /v2/vehicles
+    loadRoute('v2/vehicles', 1, true);
+  </script>
+</body>
+</html>
