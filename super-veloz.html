@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Star Citizen Wiki API — Fleet & Vehicles Explorer</title>
+  <style>
+    :root {
+      --bg-deep: #05080f;
+      --bg-panel: #0b1221;
+      --bg-card: #10192c;
+      --border-glow: #1f3b64;
+      --accent-cyan: #00d8ff;
+      --accent-amber: #ff9d00;
+      --text-main: #e6f0ff;
+      --text-muted: #7f96b8;
+      --status-flight: #10b981;
+      --status-concept: #f59e0b;
+      --status-prod: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-deep);
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(0, 216, 255, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(255, 157, 0, 0.05) 0%, transparent 40%);
+      color: var(--text-main);
+      min-height: 100vh;
+    }
+
+    header {
+      background: rgba(11, 18, 33, 0.94);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-glow);
+      padding: 1.1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .brand-badge {
+      width: 12px;
+      height: 34px;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 12px var(--accent-cyan);
+    }
+
+    .brand h1 {
+      font-size: 1.35rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .brand span {
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      display: block;
+      letter-spacing: 1px;
+    }
+
+    .api-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(0, 216, 255, 0.08);
+      border: 1px solid rgba(0, 216, 255, 0.35);
+      padding: 0.35rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      text-decoration: none;
+    }
+
+    .stats-bar {
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      align-items: center;
+    }
+
+    .stats-bar strong {
+      color: var(--accent-cyan);
+      font-size: 1rem;
+    }
+
+    #progress-container {
+      width: 100%;
+      background: #080d18;
+      border-bottom: 1px solid var(--border-glow);
+      padding: 0.6rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.85rem;
+    }
+
+    .progress-track {
+      flex: 1;
+      height: 6px;
+      background: #162238;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-cyan), #3b82f6);
+      transition: width 0.25s ease;
+    }
+
+    .controls {
+      max-width: 1500px;
+      margin: 1.5rem auto;
+      padding: 0 2rem;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr auto;
+      gap: 1rem;
+    }
+
+    @media (max-width: 1024px) {
+      .controls { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 600px) {
+      .controls { grid-template-columns: 1fr; }
+    }
+
+    input, select, button {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      color: var(--text-main);
+      padding: 0.75rem 1rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 8px rgba(0, 216, 255, 0.25);
+    }
+
+    button.btn-reset {
+      background: rgba(0, 216, 255, 0.1);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      cursor: pointer;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    button.btn-reset:hover {
+      background: var(--accent-cyan);
+      color: var(--bg-deep);
+    }
+
+    .grid {
+      max-width: 1500px;
+      margin: 0 auto 4rem;
+      padding: 0 2rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glow);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 8px 25px rgba(0, 216, 255, 0.15);
+    }
+
+    .card-img-wrap {
+      width: 100%;
+      height: 190px;
+      background: radial-gradient(circle at center, #132342 0%, #060a12 100%);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-img-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.35s ease;
+    }
+
+    .card:hover .card-img-wrap img {
+      transform: scale(1.06);
+    }
+
+    .placeholder-ship {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 0 1.2rem;
+      font-weight: 600;
+    }
+
+    .badge-status {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 0.25rem 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      border-radius: 3px;
+      background: rgba(5, 8, 15, 0.88);
+      border: 1px solid currentColor;
+      letter-spacing: 0.5px;
+      z-index: 2;
+    }
+
+    .status-flight { color: var(--status-flight); }
+    .status-concept { color: var(--status-concept); }
+    .status-prod { color: var(--status-prod); }
+
+    .card-body {
+      padding: 1.1rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .manufacturer {
+      font-size: 0.75rem;
+      color: var(--accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    .ship-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0.25rem 0 0.5rem;
+      color: #fff;
+    }
+
+    .ship-focus {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .specs-mini {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      border-top: 1px solid rgba(31, 59, 100, 0.6);
+      padding-top: 0.8rem;
+      font-size: 0.78rem;
+    }
+
+    .spec-item span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+    }
+
+    .spec-item strong {
+      color: var(--text-main);
+      font-size: 0.88rem;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 5, 12, 0.88);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1.5rem;
+    }
+
+    .modal-backdrop.active {
+      display: flex !important;
+    }
+
+    .modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-cyan);
+      border-radius: 8px;
+      max-width: 880px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 0 40px rgba(0, 216, 255, 0.25);
+    }
+
+    .modal-header {
+      padding: 1.2rem 1.5rem;
+      border-bottom: 1px solid var(--border-glow);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      background: var(--bg-panel);
+      z-index: 10;
+    }
+
+    .modal-close {
+      background: transparent;
+      border: 1px solid var(--border-glow);
+      color: var(--text-main);
+      font-size: 1.3rem;
+      line-height: 1;
+      padding: 0.35rem 0.8rem;
+      cursor: pointer;
+    }
+
+    .modal-close:hover {
+      border-color: var(--accent-amber);
+      color: var(--accent-amber);
+    }
+
+    .modal-content {
+      padding: 1.5rem;
+    }
+
+    .modal-hero {
+      width: 100%;
+      max-height: 380px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-bottom: 1.2rem;
+      border: 1px solid var(--border-glow);
+      background: #060a12;
+    }
+
+    .modal-desc {
+      color: #c2d4f0;
+      line-height: 1.6;
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      white-space: pre-line;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-stat-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glow);
+      padding: 0.85rem;
+      border-radius: 4px;
+    }
+
+    .modal-stat-box small {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      margin-bottom: 0.25rem;
+    }
+
+    .modal-stat-box div {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+    }
+
+    .modal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      align-items: center;
+    }
+
+    .wiki-link {
+      display: inline-block;
+      padding: 0.75rem 1.4rem;
+      background: var(--accent-cyan);
+      color: var(--bg-deep);
+      text-decoration: none;
+      font-weight: 700;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .api-raw-btn {
+      background: transparent;
+      border: 1px solid var(--border-glow);
+      color: var(--text-muted);
+      padding: 0.75rem 1.2rem;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    .api-raw-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    pre.json-viewer {
+      margin-top: 1rem;
+      background: #05080f;
+      border: 1px solid var(--border-glow);
+      padding: 1rem;
+      border-radius: 6px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 0.78rem;
+      color: #7dd3fc;
+      max-height: 280px;
+      overflow: auto;
+      display: none;
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-badge"></div>
+      <div>
+        <h1>Star Citizen Wiki API</h1>
+        <span>Endpoint: api.star-citizen.wiki/api/v2/vehicles</span>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <a class="api-badge" href="https://docs.star-citizen.wiki/" target="_blank" rel="noopener noreferrer">Docs API &nearr;</a>
+      <div>Frota: <strong id="count-total">0</strong></div>
+      <div>Exibindo: <strong id="count-filtered">0</strong></div>
+      <div>Imagens: <strong id="count-images">0</strong></div>
+    </div>
+  </header>
+
+  <div id="progress-container">
+    <span id="progress-text">Conectando a https://api.star-citizen.wiki/api/v2/vehicles ...</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <section class="controls">
+    <input type="text" id="search-input" placeholder="Buscar nave por nome ou fabricante (ex: Idris, Gladius, Carrack, Drake)..." />
+    <select id="filter-manufacturer">
+      <option value="">Todos os Fabricantes</option>
+    </select>
+    <select id="filter-focus">
+      <option value="">Todas as Funções (Focus)</option>
+    </select>
+    <select id="filter-status">
+      <option value="">Todos os Status</option>
+    </select>
+    <button class="btn-reset" id="btn-reset">Limpar</button>
+  </section>
+
+  <main class="grid" id="ships-grid"></main>
+
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <span class="manufacturer" id="m-manufacturer"></span>
+          <h2 id="m-name" style="margin-top: 2px;"></h2>
+        </div>
+        <button class="modal-close" id="modal-close" title="Fechar (ESC)">&times;</button>
+      </div>
+      <div class="modal-content" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    // Endpoints oficiais documentados em https://docs.star-citizen.wiki/
+    const API_V2_VEHICLES = 'https://api.star-citizen.wiki/api/v2/vehicles';
+    const WIKI_MEDIAWIKI_API = 'https://starcitizen.tools/api.php';
+
+    let allVehicles = [];
+    const detailsCache = new Map();
+    const imageCache = new Map();
+    const queriedNames = new Set();
+
+    const gridEl = document.getElementById('ships-grid');
+    const searchInput = document.getElementById('search-input');
+    const manufacturerSelect = document.getElementById('filter-manufacturer');
+    const focusSelect = document.getElementById('filter-focus');
+    const statusSelect = document.getElementById('filter-status');
+    const resetBtn = document.getElementById('btn-reset');
+    const countTotalEl = document.getElementById('count-total');
+    const countFilteredEl = document.getElementById('count-filtered');
+    const countImagesEl = document.getElementById('count-images');
+    const progressText = document.getElementById('progress-text');
+    const progressFill = document.getElementById('progress-fill');
+    const progressContainer = document.getElementById('progress-container');
+    const backdrop = document.getElementById('modal-backdrop');
+
+    function getLocalizedText(field, fallback = 'N/A') {
+      if (field === null || field === undefined) return fallback;
+      if (typeof field === 'string') return field.trim() || fallback;
+      if (typeof field === 'number') return String(field);
+      if (Array.isArray(field)) {
+        const joined = field.map(item => getLocalizedText(item, '')).filter(Boolean).join(', ');
+        return joined || fallback;
+      }
+      if (typeof field === 'object') {
+        return field.en_EN || field.pt_BR || field.name || Object.values(field).find(v => typeof v === 'string') || fallback;
+      }
+      return fallback;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function getStatusClass(status) {
+      const s = (status || '').toLowerCase();
+      if (s.includes('flight') || s.includes('ready') || s.includes('drivable')) return 'status-flight';
+      if (s.includes('concept')) return 'status-concept';
+      return 'status-prod';
+    }
+
+    // Extrai imagem diretamente do payload da Star Citizen Wiki API v2
+    function extractApiMediaUrl(v) {
+      if (!v) return '';
+      const mediaArr = Array.isArray(v.media) ? v.media : (Array.isArray(v.media?.data) ? v.media.data : []);
+      for (const m of mediaArr) {
+        const candidate = m.source || m.url || m.images?.store_large || m.images?.banner;
+        if (typeof candidate === 'string' && candidate.startsWith('http')) {
+          return candidate;
+        }
+      }
+      if (typeof v.store_image === 'string' && v.store_image.startsWith('http')) return v.store_image;
+      if (typeof v.image === 'string' && v.image.startsWith('http')) return v.image;
+      return '';
+    }
+
+    function getVehicleImage(v) {
+      if (!v) return '';
+      const direct = extractApiMediaUrl(v);
+      if (direct) return direct;
+      if (v.name && imageCache.has(v.name.toLowerCase())) {
+        return imageCache.get(v.name.toLowerCase());
+      }
+      return '';
+    }
+
+    // Complementa imagens via endpoint oficial MediaWiki da Star Citizen Wiki
+    async function fetchWikiImagesBatch(names) {
+      const pending = [...new Set(names)].filter(n => n && !imageCache.has(n.toLowerCase()) && !queriedNames.has(n.toLowerCase()));
+      if (pending.length === 0) return;
+
+      for (let i = 0; i < pending.length; i += 40) {
+        const batch = pending.slice(i, i + 40);
+        batch.forEach(n => queriedNames.add(n.toLowerCase()));
+
+        const params = new URLSearchParams({
+          action: 'query',
+          titles: batch.join('|'),
+          prop: 'pageimages',
+          piprop: 'thumbnail|original',
+          pithumbsize: '640',
+          redirects: '1',
+          format: 'json',
+          origin: '*'
+        });
+
+        try {
+          const res = await fetch(`${WIKI_MEDIAWIKI_API}?${params.toString()}`);
+          if (!res.ok) continue;
+
+          const data = await res.json();
+          const pages = data?.query?.pages || {};
+          const normalized = {};
+          const redirects = {};
+
+          (data?.query?.normalized || []).forEach(item => { normalized[item.to] = item.from; });
+          (data?.query?.redirects || []).forEach(item => { redirects[item.to] = item.from; });
+
+          Object.values(pages).forEach(page => {
+            const imgUrl = page.thumbnail?.source || page.original?.source || '';
+            if (!imgUrl) return;
+
+            let orig = page.title;
+            if (redirects[orig]) orig = redirects[orig];
+            if (normalized[orig]) orig = normalized[orig];
+
+            imageCache.set(page.title.toLowerCase(), imgUrl);
+            imageCache.set(orig.toLowerCase(), imgUrl);
+          });
+
+          countImagesEl.textContent = imageCache.size;
+          applyLoadedImagesToDOM();
+        } catch (err) {
+          console.warn('Erro ao buscar miniaturas da Wiki:', err);
+        }
+      }
+    }
+
+    function applyLoadedImagesToDOM() {
+      document.querySelectorAll('.card[data-ship-name]').forEach(card => {
+        const name = card.getAttribute('data-ship-name');
+        const imgUrl = imageCache.get(name.toLowerCase());
+        if (!imgUrl) return;
+
+        const imgEl = card.querySelector('img');
+        const placeholderEl = card.querySelector('.placeholder-ship');
+        if (imgEl && imgEl.getAttribute('src') !== imgUrl) {
+          imgEl.src = imgUrl;
+          imgEl.style.display = 'block';
+          if (placeholderEl) placeholderEl.style.display = 'none';
+        }
+      });
+
+      const modalHero = document.getElementById('modal-hero-img');
+      if (modalHero) {
+        const modalShipName = modalHero.getAttribute('data-ship-name');
+        const imgUrl = imageCache.get((modalShipName || '').toLowerCase());
+        if (imgUrl && modalHero.getAttribute('src') !== imgUrl) {
+          modalHero.src = imgUrl;
+          modalHero.style.display = 'block';
+        }
+      }
+    }
+
+    async function fetchAllFromStarCitizenWikiAPI() {
+      try {
+        const firstRes = await fetch(`${API_V2_VEHICLES}?limit=100&page=1&include=media`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (!firstRes.ok) throw new Error(`HTTP ${firstRes.status}`);
+        const firstJson = await firstRes.json();
+
+        allVehicles = [...(firstJson.data || [])];
+        allVehicles.forEach(v => {
+          const directImg = extractApiMediaUrl(v);
+          if (directImg && v.name) imageCache.set(v.name.toLowerCase(), directImg);
+        });
+        countImagesEl.textContent = imageCache.size;
+
+        const lastPage = firstJson.meta?.last_page || 1;
+        const totalExpected = firstJson.meta?.total || allVehicles.length;
+
+        updateProgress(1, lastPage, totalExpected);
+        populateFilters();
+        renderVehicles();
+
+        const missingFromPage1 = allVehicles.filter(v => !getVehicleImage(v)).map(v => v.name);
+        fetchWikiImagesBatch(missingFromPage1);
+
+        if (lastPage > 1) {
+          const pageNumbers = [];
+          for (let p = 2; p <= lastPage; p++) pageNumbers.push(p);
+
+          const batchSize = 4;
+          let completedPages = 1;
+
+          for (let i = 0; i < pageNumbers.length; i += batchSize) {
+            const batch = pageNumbers.slice(i, i + batchSize);
+            const results = await Promise.all(
+              batch.map(page =>
+                fetch(`${API_V2_VEHICLES}?limit=100&page=${page}&include=media`, {
+                  headers: { 'Accept': 'application/json' }
+                })
+                  .then(r => r.ok ? r.json() : { data: [] })
+                  .catch(() => ({ data: [] }))
+              )
+            );
+
+            const newlyAddedMissingImg = [];
+            results.forEach(res => {
+              if (res.data && Array.isArray(res.data)) {
+                res.data.forEach(item => {
+                  allVehicles.push(item);
+                  const directImg = extractApiMediaUrl(item);
+                  if (directImg && item.name) {
+                    imageCache.set(item.name.toLowerCase(), directImg);
+                  } else if (item.name) {
+                    newlyAddedMissingImg.push(item.name);
+                  }
+                });
+              }
+            });
+
+            countImagesEl.textContent = imageCache.size;
+            completedPages += batch.length;
+            updateProgress(completedPages, lastPage, totalExpected);
+            populateFilters();
+            renderVehicles();
+            fetchWikiImagesBatch(newlyAddedMissingImg);
+          }
+        }
+
+        progressText.textContent = `Sincronização concluída via Star Citizen Wiki API: ${allVehicles.length} veículos.`;
+        progressFill.style.width = '100%';
+        setTimeout(() => { progressContainer.style.display = 'none'; }, 2200);
+
+      } catch (err) {
+        console.error('Erro na Star Citizen Wiki API:', err);
+        progressText.textContent = `Erro ao consultar api.star-citizen.wiki (${err.message}).`;
+        progressFill.style.background = '#ef4444';
+      }
+    }
+
+    function updateProgress(current, total, expectedItems) {
+      const pct = Math.min(100, Math.round((current / total) * 100));
+      progressFill.style.width = `${pct}%`;
+      progressText.textContent = `Sincronizando endpoints da Star Citizen Wiki API... (${allVehicles.length} de ~${expectedItems})`;
+      countTotalEl.textContent = allVehicles.length;
+    }
+
+    function populateFilters() {
+      const currentMfg = manufacturerSelect.value;
+      const currentFocus = focusSelect.value;
+      const currentStatus = statusSelect.value;
+
+      const mfgs = new Set();
+      const focuses = new Set();
+      const statuses = new Set();
+
+      allVehicles.forEach(v => {
+        const mfg = v.manufacturer?.name;
+        if (mfg) mfgs.add(mfg);
+
+        if (Array.isArray(v.focus)) {
+          v.focus.forEach(f => {
+            const txt = getLocalizedText(f, '');
+            if (txt) focuses.add(txt);
+          });
+        } else {
+          const txt = getLocalizedText(v.focus, '');
+          if (txt) focuses.add(txt);
+        }
+
+        const st = getLocalizedText(v.production_status, '');
+        if (st) statuses.add(st);
+      });
+
+      fillSelect(manufacturerSelect, [...mfgs].sort(), 'Todos os Fabricantes', currentMfg);
+      fillSelect(focusSelect, [...focuses].sort(), 'Todas as Funções (Focus)', currentFocus);
+      fillSelect(statusSelect, [...statuses].sort(), 'Todos os Status', currentStatus);
+    }
+
+    function fillSelect(selectEl, items, defaultLabel, selectedVal) {
+      selectEl.innerHTML = `<option value="">${defaultLabel}</option>` +
+        items.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+      selectEl.value = selectedVal;
+    }
+
+    function renderVehicles() {
+      const query = searchInput.value.trim().toLowerCase();
+      const mfgFilter = manufacturerSelect.value;
+      const focusFilter = focusSelect.value;
+      const statusFilter = statusSelect.value;
+
+      const filtered = allVehicles.filter(v => {
+        const name = (v.name || '').toLowerCase();
+        const mfg = v.manufacturer?.name || '';
+        const status = getLocalizedText(v.production_status, '');
+        const focusList = Array.isArray(v.focus)
+          ? v.focus.map(f => getLocalizedText(f, ''))
+          : [getLocalizedText(v.focus, '')];
+
+        const matchesQuery = !query || name.includes(query) || mfg.toLowerCase().includes(query);
+        const matchesMfg = !mfgFilter || mfg === mfgFilter;
+        const matchesFocus = !focusFilter || focusList.includes(focusFilter);
+        const matchesStatus = !statusFilter || status === statusFilter;
+
+        return matchesQuery && matchesMfg && matchesFocus && matchesStatus;
+      });
+
+      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      countFilteredEl.textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        gridEl.innerHTML = `<div class="empty-state">Nenhuma nave encontrada com os filtros selecionados.</div>`;
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      const missingVisibleNames = [];
+
+      filtered.forEach(v => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.setAttribute('data-ship-name', v.name || '');
+
+        const imgUrl = getVehicleImage(v);
+        if (!imgUrl && v.name) missingVisibleNames.push(v.name);
+
+        const status = getLocalizedText(v.production_status, 'Desconhecido');
+        const statusClass = getStatusClass(status);
+        const mfg = v.manufacturer?.name || 'Fabricante Desconhecido';
+        const focus = Array.isArray(v.focus)
+          ? v.focus.map(f => getLocalizedText(f, '')).filter(Boolean).join(' / ') || 'Multifunção'
+          : getLocalizedText(v.focus, 'Multifunção');
+
+        const cargo = v.cargo_capacity != null ? `${v.cargo_capacity} SCU` : '—';
+        const crewMax = v.crew?.max ?? v.max_crew ?? '—';
+        const length = v.sizes?.length != null ? `${v.sizes.length}m` : (v.length != null ? `${v.length}m` : '—');
+
+        card.innerHTML = `
+          <div class="card-img-wrap">
+            <img 
+              src="${escapeHtml(imgUrl)}" 
+              alt="${escapeHtml(v.name || 'Nave')}" 
+              loading="lazy" 
+              referrerpolicy="no-referrer"
+              style="${imgUrl ? '' : 'display:none;'}"
+              onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';"
+            />
+            <span class="placeholder-ship" style="${imgUrl ? 'display:none;' : ''}">${escapeHtml(v.name || 'Nave')}</span>
+            <span class="badge-status ${statusClass}">${escapeHtml(status)}</span>
+          </div>
+          <div class="card-body">
+            <div>
+              <div class="manufacturer">${escapeHtml(mfg)}</div>
+              <h3 class="ship-name">${escapeHtml(v.name || 'Sem Nome')}</h3>
+              <div class="ship-focus">${escapeHtml(focus)}</div>
+            </div>
+            <div class="specs-mini">
+              <div class="spec-item">
+                <span>Carga</span>
+                <strong>${escapeHtml(cargo)}</strong>
+              </div>
+              <div class="spec-item">
+                <span>Tripulação</span>
+                <strong>${escapeHtml(String(crewMax))}</strong>
+              </div>
+              <div class="spec-item">
+                <span>Comprimento</span>
+                <strong>${escapeHtml(length)}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => openModal(v));
+        fragment.appendChild(card);
+      });
+
+      gridEl.innerHTML = '';
+      gridEl.appendChild(fragment);
+
+      if (missingVisibleNames.length > 0) {
+        fetchWikiImagesBatch(missingVisibleNames);
+      }
+    }
+
+    function renderModalContent(v, isLoadingDetails = false) {
+      const imgUrl = getVehicleImage(v);
+      const desc = getLocalizedText(v.description, 'Nenhuma descrição disponível na API para este veículo.');
+      const status = getLocalizedText(v.production_status, 'N/A');
+      const size = getLocalizedText(v.size, 'N/A');
+      const type = getLocalizedText(v.type, 'N/A');
+      const focus = getLocalizedText(v.focus, 'N/A');
+      const cargo = v.cargo_capacity != null ? `${v.cargo_capacity} SCU` : 'N/A';
+
+      const crewMin = v.crew?.min ?? v.min_crew ?? '?';
+      const crewMax = v.crew?.max ?? v.max_crew ?? '?';
+
+      const length = v.sizes?.length ?? v.length ?? 'N/A';
+      const beam = v.sizes?.beam ?? v.beam ?? 'N/A';
+      const height = v.sizes?.height ?? v.height ?? 'N/A';
+
+      const mass = v.mass != null ? `${Number(v.mass).toLocaleString('pt-BR')} kg` : 'N/A';
+      const scmSpeed = v.speed?.scm != null ? `${v.speed.scm} m/s` : 'N/A';
+      const maxSpeed = v.speed?.max != null ? `${v.speed.max} m/s` : 'N/A';
+      const msrp = v.msrp != null ? `$${Number(v.msrp).toLocaleString('en-US')} USD` : 'N/A';
+      const quantumRange = v.quantum?.quantum_range != null ? `${Number(v.quantum.quantum_range).toLocaleString('pt-BR')} Gm` : 'N/A';
+
+      const wikiSlug = encodeURIComponent((v.name || '').replace(/\s+/g, '_'));
+      const wikiUrl = v.web_url || `https://starcitizen.tools/${wikiSlug}`;
+      const apiEndpointUrl = v.uuid ? `${API_V2_VEHICLES}/${v.uuid}` : API_V2_VEHICLES;
+
+      document.getElementById('modal-body').innerHTML = `
+        ${isLoadingDetails ? `<div style="color:var(--accent-cyan);font-size:0.85rem;margin-bottom:0.8rem;">⟳ Consultando ${escapeHtml(apiEndpointUrl)} ...</div>` : ''}
+        <img id="modal-hero-img" data-ship-name="${escapeHtml(v.name || '')}" class="modal-hero" src="${escapeHtml(imgUrl)}" alt="${escapeHtml(v.name)}" referrerpolicy="no-referrer" style="${imgUrl ? '' : 'display:none;'}" onerror="this.style.display='none'">
+        <p class="modal-desc">${escapeHtml(desc)}</p>
+        <div class="modal-grid">
+          <div class="modal-stat-box"><small>Status</small><div>${escapeHtml(status)}</div></div>
+          <div class="modal-stat-box"><small>Função (Focus)</small><div>${escapeHtml(focus)}</div></div>
+          <div class="modal-stat-box"><small>Tipo / Porte</small><div>${escapeHtml(type)} (${escapeHtml(size)})</div></div>
+          <div class="modal-stat-box"><small>Capacidade de Carga</small><div>${escapeHtml(cargo)}</div></div>
+          <div class="modal-stat-box"><small>Tripulação (Min / Max)</small><div>${escapeHtml(String(crewMin))} / ${escapeHtml(String(crewMax))}</div></div>
+          <div class="modal-stat-box"><small>Dimensões (C × L × A)</small><div>${escapeHtml(String(length))}m × ${escapeHtml(String(beam))}m × ${escapeHtml(String(height))}m</div></div>
+          <div class="modal-stat-box"><small>Massa</small><div>${escapeHtml(mass)}</div></div>
+          <div class="modal-stat-box"><small>Velocidade SCM / Máx</small><div>${escapeHtml(scmSpeed)} / ${escapeHtml(maxSpeed)}</div></div>
+          <div class="modal-stat-box"><small>Alcance Quantum</small><div>${escapeHtml(quantumRange)}</div></div>
+          <div class="modal-stat-box"><small>Valor Pledge (MSRP)</small><div>${escapeHtml(msrp)}</div></div>
+        </div>
+        <div class="modal-actions">
+          <a class="wiki-link" href="${escapeHtml(wikiUrl)}" target="_blank" rel="noopener noreferrer">Abrir na Wiki &rarr;</a>
+          <button type="button" class="api-raw-btn" id="toggle-json-btn">Ver JSON da API</button>
+        </div>
+        <pre class="json-viewer" id="json-viewer">${escapeHtml(JSON.stringify(v, null, 2))}</pre>
+      `;
+
+      const toggleBtn = document.getElementById('toggle-json-btn');
+      const jsonViewer = document.getElementById('json-viewer');
+      if (toggleBtn && jsonViewer) {
+        toggleBtn.addEventListener('click', () => {
+          const isHidden = jsonViewer.style.display === 'none' || !jsonViewer.style.display;
+          jsonViewer.style.display = isHidden ? 'block' : 'none';
+          toggleBtn.textContent = isHidden ? 'Ocultar JSON da API' : 'Ver JSON da API';
+        });
+      }
+
+      if (!imgUrl && v.name) {
+        fetchWikiImagesBatch([v.name]);
+      }
+    }
+
+    async function openModal(basicVehicle) {
+      try {
+        document.getElementById('m-manufacturer').textContent = basicVehicle.manufacturer?.name || 'Desconhecido';
+        document.getElementById('m-name').textContent = basicVehicle.name || 'Veículo';
+        backdrop.classList.add('active');
+
+        const identifier = basicVehicle.uuid || basicVehicle.slug || basicVehicle.name;
+
+        if (identifier && detailsCache.has(identifier)) {
+          renderModalContent(detailsCache.get(identifier), false);
+          return;
+        }
+
+        renderModalContent(basicVehicle, true);
+
+        if (identifier && basicVehicle.uuid) {
+          const detailUrl = `${API_V2_VEHICLES}/${encodeURIComponent(basicVehicle.uuid)}?include=media,hardpoints,components`;
+          const res = await fetch(detailUrl, { headers: { 'Accept': 'application/json' } });
+          let fullData = basicVehicle;
+
+          if (res.ok) {
+            const json = await res.json();
+            fullData = json.data ? { ...basicVehicle, ...json.data } : basicVehicle;
+            const directImg = extractApiMediaUrl(fullData);
+            if (directImg && fullData.name) {
+              imageCache.set(fullData.name.toLowerCase(), directImg);
+            }
+          }
+
+          detailsCache.set(identifier, fullData);
+          renderModalContent(fullData, false);
+        } else {
+          renderModalContent(basicVehicle, false);
+        }
+      } catch (err) {
+        console.error('Erro ao abrir detalhes da nave:', err);
+        renderModalContent(basicVehicle, false);
+      }
+    }
+
+    function closeModal() {
+      backdrop.classList.remove('active');
+    }
+
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && backdrop.classList.contains('active')) closeModal(); });
+
+    searchInput.addEventListener('input', renderVehicles);
+    manufacturerSelect.addEventListener('change', renderVehicles);
+    focusSelect.addEventListener('change', renderVehicles);
+    statusSelect.addEventListener('change', renderVehicles);
+
+    resetBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      manufacturerSelect.value = '';
+      focusSelect.value = '';
+      statusSelect.value = '';
+      renderVehicles();
+    });
+
+    fetchAllFromStarCitizenWikiAPI();
+  </script>
+</body>
+</html>
